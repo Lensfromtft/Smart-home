@@ -28,7 +28,7 @@
     <p>Température cible : <span id="wanted-temp">20</span> °C</p>
 
     <script>
-        const broker = "ws://test.mosquitto.org:8080/mqtt";  
+        const broker = "wss://test.mosquitto.org:8081/mqtt";  
         const client = mqtt.connect(broker);
 
         client.on("connect", () => {
