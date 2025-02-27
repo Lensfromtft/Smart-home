@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Dashboard</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+        #temp { font-size: 24px; font-weight: bold; }
+        #wanted-temp { font-size: 20px; font-weight: bold; }
+        button, input[type="range"] { padding: 10px; font-size: 18px; margin: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>ESP32 Température & LED RGB</h1>
+    <p>Température actuelle : <span id="temp">--</span> °C</p>
+
+    <h2>LED RGB</h2>
+    <button onclick="toggleLED('RED')">Rouge</button>
+    <button onclick="toggleLED('GREEN')">Vert</button>
+    <button onclick="toggleLED('BLUE')">Bleu</button>
+    <button onclick="toggleLED('WHITE')">Blanc</button>
+    <button onclick="toggleLED('OFF_RGB')">Éteindre LED RGB</button>
+
+    <h2>Température souhaitée</h2>
+    <input type="range" id="tempSlider" min="-10" max="40" step="0.5" value="20" oninput="updateWantedTemp()">
+    <p>Température cible : <span id="wanted-temp">20</span> °C</p>
+
+    <script>
+        const broker = "ws://test.mosquitto.org:8080/mqtt";  
+        const client = mqtt.connect(broker);
+
+        client.on("connect", () => {
+            console.log("Connecté au broker MQTT");
+            client.subscribe("esp32/ernouftemperature");
+        });
+
+        client.on("message", (topic, message) => {
+            if (topic === "esp32/ernouftemperature") {
+                document.getElementById("temp").innerText = message.toString();
+            }
+        });
+
+        function toggleLED(state) {
+            client.publish("esp32/ernoufled", state);
+        }
+
+        function updateWantedTemp() {
+            const tempSlider = document.getElementById("tempSlider");
+            const wantedTemp = tempSlider.value;
+            document.getElementById("wanted-temp").innerText = wantedTemp;
+            client.publish("esp32/ernoufwanted", wantedTemp);
+        }
+    </script>
+</body>
+</html>
