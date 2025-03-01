@@ -1,57 +1,700 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 Dashboard</title>
-    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
-        #temp { font-size: 24px; font-weight: bold; }
-        #wanted-temp { font-size: 20px; font-weight: bold; }
-        button, input[type="range"] { padding: 10px; font-size: 18px; margin: 10px; cursor: pointer; }
-    </style>
+  <meta charset="UTF-8" />
+  <title>Smart Home Dashboard - Login</title>
+  <!-- Import MQTT library -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    /* Global styles */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+      position: relative;
+    }
+    /* Login container */
+    #login-container {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    #login-container h2 { margin-bottom: 20px; }
+    #login-container input {
+      width: 80%;
+      padding: 10px;
+      margin: 10px 0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+    #login-container button {
+      padding: 10px 20px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 4px;
+      background: #333;
+      color: #fff;
+      cursor: pointer;
+    }
+    #error-message {
+      color: red;
+      margin-top: 10px;
+      font-size: 0.9rem;
+    }
+    /* Logout button */
+    #logout-container {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+    }
+    #logout-container button {
+      padding: 8px 16px;
+      font-size: 0.9rem;
+      border: none;
+      border-radius: 4px;
+      background: #333;
+      color: #fff;
+      cursor: pointer;
+    }
+    #logout-container button:hover {
+      background: #555;
+    }
+    /* Dashboard (tabs) */
+    #dashboard-container {
+      width: 100%;
+      max-width: 800px;
+    }
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .tabs button {
+      background: #ccc;
+      border: none;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-size: 1rem;
+      border-radius: 4px;
+      transition: background 0.2s ease;
+    }
+    .tabs button:hover { background: #bbb; }
+    .tabs button.active { background: #333; color: #fff; }
+    .tab-content {
+      display: none;
+      width: 100%;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .indicator {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      margin-left: 5px;
+      vertical-align: middle;
+      background-color: red;
+    }
+    .indicator.on { background-color: #00cc00; }
+    .slider-container { margin: 20px 0; }
+    input[type="range"] { width: 100%; }
+    button { margin: 5px; padding: 8px 16px; border: none; border-radius: 4px; background: #333; color: #fff; cursor: pointer; font-size: 0.9rem; }
+    button:hover { background: #555; }
+    footer { margin-top: auto; font-size: 0.9rem; color: #999; text-align: center; }
+  </style>
 </head>
 <body>
-    <h1>ESP32 Température & LED RGB</h1>
-    <p>Température actuelle : <span id="temp">--</span> °C</p>
+  <!-- Login Page -->
+  <div id="login-container">
+    <h2>Login Smart Home</h2>
+    <input type="text" id="username" placeholder="Username">
+    <br>
+    <input type="password" id="password" placeholder="Password">
+    <br>
+    <button onclick="validateLogin()">Sign In</button>
+    <div id="error-message"></div>
+  </div>
+  
+  <!-- Dashboard (hidden by default) -->
+  <div id="dashboard-container" style="display: none;">
+    <!-- Logout Button (top left) -->
+    <div id="logout-container">
+      <button onclick="logout()">Logout</button>
+    </div>
+    <h1>Smart Home Dashboard - PFE</h1>
+    <nav class="tabs">
+      <button class="tab-btn active" onclick="showTab('tab-temp')">Temperature</button>
+      <button class="tab-btn" onclick="showTab('tab-lights')">Lights</button>
+      <button class="tab-btn" onclick="showTab('tab-door')">Door</button>
+    </nav>
+    
+    <!-- Temperature Tab -->
+    <section id="tab-temp" class="tab-content">
+      <h2>Temperature</h2>
+      <p>Current Temperature: <strong id="current-temp">-- °C</strong></p>
+      <div class="slider-container">
+        <label for="tempSlider">Desired Temperature:</label>
+        <input type="range" id="tempSlider" min="0" max="40" step="0.5" value="20" oninput="updateWantedTemp()">
+        <p>Set Point: <span id="wanted-temp">20</span> °C</p>
+      </div>
+    </section>
+    
+    <!-- Lights Tab -->
+    <section id="tab-lights" class="tab-content">
+      <h2>Light Control</h2>
+      <div>
+        <h3>Light 1</h3>
+        <button onclick="toggleLight(1)">ON/OFF</button>
+        <span class="indicator" id="light1-indicator"></span>
+      </div>
+      <div>
+        <h3>Light 2</h3>
+        <button onclick="toggleLight(2)">ON/OFF</button>
+        <span class="indicator" id="light2-indicator"></span>
+      </div>
+      <div>
+        <h3>Light 3</h3>
+        <button onclick="toggleLight(3)">ON/OFF</button>
+        <span class="indicator" id="light3-indicator"></span>
+      </div>
+    </section>
+    
+    <!-- Door Tab -->
+    <section id="tab-door" class="tab-content">
+      <h2>Door Control</h2>
+      <p>
+        Door Status: 
+        <span class="indicator" id="door-indicator"></span>
+      </p>
+      <!-- "Open" button is restricted to admin -->
+      <button id="openDoorButton" onclick="openDoor()">Open</button>
+      <button onclick="closeDoor()">Close</button>
+    </section>
+    
+    <footer>
+      &copy; 2025 - Ernouf & Guedj
+    </footer>
+  </div>
 
-    <h2>LED RGB</h2>
-    <button onclick="toggleLED('RED')">Rouge</button>
-    <button onclick="toggleLED('GREEN')">Vert</button>
-    <button onclick="toggleLED('BLUE')">Bleu</button>
-    <button onclick="toggleLED('WHITE')">Blanc</button>
-    <button onclick="toggleLED('OFF_RGB')">Éteindre LED RGB</button>
+  <script>
+    /************************************
+     * Login and Role Management
+     ************************************/
+    // Pre-registered credentials
+    const validAdminUser = "admin";
+    const validAdminPass = "admin";
+    const validUserUser  = "user";
+    const validUserPass  = "user";
+    
+    // Variable to store current role ("admin" or "user")
+    let currentRole = "";
 
-    <h2>Température souhaitée</h2>
-    <input type="range" id="tempSlider" min="-10" max="40" step="0.5" value="20" oninput="updateWantedTemp()">
-    <p>Température cible : <span id="wanted-temp">20</span> °C</p>
+    function validateLogin() {
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+      const errorMessage = document.getElementById("error-message");
 
-    <script>
-        const broker = "wss://test.mosquitto.org:8081/mqtt";  
-        const client = mqtt.connect(broker);
+      if (username === validAdminUser && password === validAdminPass) {
+        currentRole = "admin";
+      } else if (username === validUserUser && password === validUserPass) {
+        currentRole = "user";
+      } else {
+        errorMessage.innerText = "Incorrect username or password";
+        return;
+      }
 
-        client.on("connect", () => {
-            console.log("Connecté au broker MQTT");
-            client.subscribe("esp32/ernouftemperature");
-        });
+      // Successful login: hide login page and show dashboard
+      document.getElementById("login-container").style.display = "none";
+      document.getElementById("dashboard-container").style.display = "block";
 
-        client.on("message", (topic, message) => {
-            if (topic === "esp32/ernouftemperature") {
-                document.getElementById("temp").innerText = message.toString();
-            }
-        });
+      // Apply permissions based on role
+      if (currentRole === "admin") {
+        document.getElementById("tempSlider").disabled = false;
+        document.getElementById("openDoorButton").disabled = false;
+      } else {
+        document.getElementById("tempSlider").disabled = true;
+        document.getElementById("openDoorButton").disabled = true;
+      }
+    }
 
-        function toggleLED(state) {
-            client.publish("esp32/ernoufled", state);
-        }
+    function logout() {
+      // Reset the login form and current role
+      currentRole = "";
+      document.getElementById("username").value = "";
+      document.getElementById("password").value = "";
+      document.getElementById("error-message").innerText = "";
+      
+      // Reset permissions (re-enable controls)
+      document.getElementById("tempSlider").disabled = false;
+      document.getElementById("openDoorButton").disabled = false;
+      
+      // Hide dashboard and show login page
+      document.getElementById("dashboard-container").style.display = "none";
+      document.getElementById("login-container").style.display = "block";
+    }
 
-        function updateWantedTemp() {
-            const tempSlider = document.getElementById("tempSlider");
-            const wantedTemp = tempSlider.value;
-            document.getElementById("wanted-temp").innerText = wantedTemp;
-            client.publish("esp32/ernoufwanted", wantedTemp);
-        }
-    </script>
+    /************************************
+     * Dashboard Tab Management
+     ************************************/
+    function showTab(tabId) {
+      const contents = document.querySelectorAll('.tab-content');
+      contents.forEach(c => c.style.display = 'none');
+      const buttons = document.querySelectorAll('.tab-btn');
+      buttons.forEach(b => b.classList.remove('active'));
+      document.getElementById(tabId).style.display = 'block';
+      const activeButton = Array.from(buttons).find(btn => 
+        btn.getAttribute('onclick') === `showTab('${tabId}')`
+      );
+      if (activeButton) {
+        activeButton.classList.add('active');
+      }
+    }
+    // Default: show Temperature tab
+    showTab('tab-temp');
+
+    /************************************
+     * MQTT Configuration and Dashboard Logic
+     ************************************/
+    const brokerURL = "wss://test.mosquitto.org:8081/mqtt";
+    const client = mqtt.connect(brokerURL);
+
+    // MQTT Topics
+    const topicTemperature = "lentheo/temperature";
+    const topicWantedTemp  = "lentheo/wanted";
+    const topicLight1      = "lentheo/light1";
+    const topicLight2      = "lentheo/light2";
+    const topicLight3      = "lentheo/light3";
+    const topicDoor        = "lentheo/door";
+
+    client.on("connect", () => {
+      console.log("Connected to MQTT broker:", brokerURL);
+      client.subscribe(topicTemperature);
+      client.subscribe(topicLight1);
+      client.subscribe(topicLight2);
+      client.subscribe(topicLight3);
+      client.subscribe(topicDoor);
+    });
+
+    client.on("message", (topic, message) => {
+      const payload = message.toString();
+      if (topic === topicTemperature) {
+        document.getElementById("current-temp").innerText = payload + " °C";
+      }
+      if (topic === topicLight1) {
+        updateLightIndicator(1, payload);
+      }
+      if (topic === topicLight2) {
+        updateLightIndicator(2, payload);
+      }
+      if (topic === topicLight3) {
+        updateLightIndicator(3, payload);
+      }
+      if (topic === topicDoor) {
+        updateDoorIndicator(payload);
+      }
+    });
+
+    function updateWantedTemp() {
+      if (currentRole !== "admin") return;
+      const slider = document.getElementById("tempSlider");
+      const wantedValue = slider.value;
+      document.getElementById("wanted-temp").innerText = wantedValue;
+      client.publish(topicWantedTemp, wantedValue);
+    }
+
+    function toggleLight(lightNumber) {
+      client.publish("esp32/light" + lightNumber, "TOGGLE");
+    }
+    function updateLightIndicator(lightNumber, state) {
+      const indicator = document.getElementById(`light${lightNumber}-indicator`);
+      if (!indicator) return;
+      if (state === "ON") {
+        indicator.classList.add("on");
+      } else {
+        indicator.classList.remove("on");
+      }
+    }
+
+    function openDoor() {
+      if (currentRole !== "admin") return;
+      client.publish(topicDoor, "OPEN");
+    }
+    function closeDoor() {
+      client.publish(topicDoor, "CLOSE");
+    }
+    function updateDoorIndicator(state) {
+      const doorIndicator = document.getElementById("door-indicator");
+      if (state === "OPEN") {
+        doorIndicator.classList.add("on");
+      } else {
+        doorIndicator.classList.remove("on");
+      }
+    }
+  </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Smart Home Dashboard - Login</title>
+  <!-- Import MQTT library -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    /* Global styles */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+      position: relative;
+    }
+    /* Login container */
+    #login-container {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    #login-container h2 { margin-bottom: 20px; }
+    #login-container input {
+      width: 80%;
+      padding: 10px;
+      margin: 10px 0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+    #login-container button {
+      padding: 10px 20px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 4px;
+      background: #333;
+      color: #fff;
+      cursor: pointer;
+    }
+    #error-message {
+      color: red;
+      margin-top: 10px;
+      font-size: 0.9rem;
+    }
+    /* Logout button */
+    #logout-container {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+    }
+    #logout-container button {
+      padding: 8px 16px;
+      font-size: 0.9rem;
+      border: none;
+      border-radius: 4px;
+      background: #333;
+      color: #fff;
+      cursor: pointer;
+    }
+    #logout-container button:hover {
+      background: #555;
+    }
+    /* Dashboard (tabs) */
+    #dashboard-container {
+      width: 100%;
+      max-width: 800px;
+    }
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .tabs button {
+      background: #ccc;
+      border: none;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-size: 1rem;
+      border-radius: 4px;
+      transition: background 0.2s ease;
+    }
+    .tabs button:hover { background: #bbb; }
+    .tabs button.active { background: #333; color: #fff; }
+    .tab-content {
+      display: none;
+      width: 100%;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 0 8px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .indicator {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      margin-left: 5px;
+      vertical-align: middle;
+      background-color: red;
+    }
+    .indicator.on { background-color: #00cc00; }
+    .slider-container { margin: 20px 0; }
+    input[type="range"] { width: 100%; }
+    button { margin: 5px; padding: 8px 16px; border: none; border-radius: 4px; background: #333; color: #fff; cursor: pointer; font-size: 0.9rem; }
+    button:hover { background: #555; }
+    footer { margin-top: auto; font-size: 0.9rem; color: #999; text-align: center; }
+  </style>
+</head>
+<body>
+  <!-- Login Page -->
+  <div id="login-container">
+    <h2>Login Smart Home</h2>
+    <input type="text" id="username" placeholder="Username">
+    <br>
+    <input type="password" id="password" placeholder="Password">
+    <br>
+    <button onclick="validateLogin()">Sign In</button>
+    <div id="error-message"></div>
+  </div>
+  
+  <!-- Dashboard (hidden by default) -->
+  <div id="dashboard-container" style="display: none;">
+    <!-- Logout Button (top left) -->
+    <div id="logout-container">
+      <button onclick="logout()">Logout</button>
+    </div>
+    <h1>Smart Home Dashboard - PFE</h1>
+    <nav class="tabs">
+      <button class="tab-btn active" onclick="showTab('tab-temp')">Temperature</button>
+      <button class="tab-btn" onclick="showTab('tab-lights')">Lights</button>
+      <button class="tab-btn" onclick="showTab('tab-door')">Door</button>
+    </nav>
+    
+    <!-- Temperature Tab -->
+    <section id="tab-temp" class="tab-content">
+      <h2>Temperature</h2>
+      <p>Current Temperature: <strong id="current-temp">-- °C</strong></p>
+      <div class="slider-container">
+        <label for="tempSlider">Desired Temperature:</label>
+        <input type="range" id="tempSlider" min="0" max="40" step="0.5" value="20" oninput="updateWantedTemp()">
+        <p>Set Point: <span id="wanted-temp">20</span> °C</p>
+      </div>
+    </section>
+    
+    <!-- Lights Tab -->
+    <section id="tab-lights" class="tab-content">
+      <h2>Light Control</h2>
+      <div>
+        <h3>Light 1</h3>
+        <button onclick="toggleLight(1)">ON/OFF</button>
+        <span class="indicator" id="light1-indicator"></span>
+      </div>
+      <div>
+        <h3>Light 2</h3>
+        <button onclick="toggleLight(2)">ON/OFF</button>
+        <span class="indicator" id="light2-indicator"></span>
+      </div>
+      <div>
+        <h3>Light 3</h3>
+        <button onclick="toggleLight(3)">ON/OFF</button>
+        <span class="indicator" id="light3-indicator"></span>
+      </div>
+    </section>
+    
+    <!-- Door Tab -->
+    <section id="tab-door" class="tab-content">
+      <h2>Door Control</h2>
+      <p>
+        Door Status: 
+        <span class="indicator" id="door-indicator"></span>
+      </p>
+      <!-- "Open" button is restricted to admin -->
+      <button id="openDoorButton" onclick="openDoor()">Open</button>
+      <button onclick="closeDoor()">Close</button>
+    </section>
+    
+    <footer>
+      &copy; 2025 - Ernouf & Guedj
+    </footer>
+  </div>
+
+  <script>
+    /************************************
+     * Login and Role Management
+     ************************************/
+    // Pre-registered credentials
+    const validAdminUser = "admin";
+    const validAdminPass = "admin";
+    const validUserUser  = "user";
+    const validUserPass  = "user";
+    
+    // Variable to store current role ("admin" or "user")
+    let currentRole = "";
+
+    function validateLogin() {
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+      const errorMessage = document.getElementById("error-message");
+
+      if (username === validAdminUser && password === validAdminPass) {
+        currentRole = "admin";
+      } else if (username === validUserUser && password === validUserPass) {
+        currentRole = "user";
+      } else {
+        errorMessage.innerText = "Incorrect username or password";
+        return;
+      }
+
+      // Successful login: hide login page and show dashboard
+      document.getElementById("login-container").style.display = "none";
+      document.getElementById("dashboard-container").style.display = "block";
+
+      // Apply permissions based on role
+      if (currentRole === "admin") {
+        document.getElementById("tempSlider").disabled = false;
+        document.getElementById("openDoorButton").disabled = false;
+      } else {
+        document.getElementById("tempSlider").disabled = true;
+        document.getElementById("openDoorButton").disabled = true;
+      }
+    }
+
+    function logout() {
+      // Reset the login form and current role
+      currentRole = "";
+      document.getElementById("username").value = "";
+      document.getElementById("password").value = "";
+      document.getElementById("error-message").innerText = "";
+      
+      // Reset permissions (re-enable controls)
+      document.getElementById("tempSlider").disabled = false;
+      document.getElementById("openDoorButton").disabled = false;
+      
+      // Hide dashboard and show login page
+      document.getElementById("dashboard-container").style.display = "none";
+      document.getElementById("login-container").style.display = "block";
+    }
+
+    /************************************
+     * Dashboard Tab Management
+     ************************************/
+    function showTab(tabId) {
+      const contents = document.querySelectorAll('.tab-content');
+      contents.forEach(c => c.style.display = 'none');
+      const buttons = document.querySelectorAll('.tab-btn');
+      buttons.forEach(b => b.classList.remove('active'));
+      document.getElementById(tabId).style.display = 'block';
+      const activeButton = Array.from(buttons).find(btn => 
+        btn.getAttribute('onclick') === `showTab('${tabId}')`
+      );
+      if (activeButton) {
+        activeButton.classList.add('active');
+      }
+    }
+    // Default: show Temperature tab
+    showTab('tab-temp');
+
+    /************************************
+     * MQTT Configuration and Dashboard Logic
+     ************************************/
+    const brokerURL = "wss://test.mosquitto.org:8081/mqtt";
+    const client = mqtt.connect(brokerURL);
+
+    // MQTT Topics
+    const topicTemperature = "lentheo/temperature";
+    const topicWantedTemp  = "lentheo/wanted";
+    const topicLight1      = "lentheo/light1";
+    const topicLight2      = "lentheo/light2";
+    const topicLight3      = "lentheo/light3";
+    const topicDoor        = "lentheo/door";
+
+    client.on("connect", () => {
+      console.log("Connected to MQTT broker:", brokerURL);
+      client.subscribe(topicTemperature);
+      client.subscribe(topicLight1);
+      client.subscribe(topicLight2);
+      client.subscribe(topicLight3);
+      client.subscribe(topicDoor);
+    });
+
+    client.on("message", (topic, message) => {
+      const payload = message.toString();
+      if (topic === topicTemperature) {
+        document.getElementById("current-temp").innerText = payload + " °C";
+      }
+      if (topic === topicLight1) {
+        updateLightIndicator(1, payload);
+      }
+      if (topic === topicLight2) {
+        updateLightIndicator(2, payload);
+      }
+      if (topic === topicLight3) {
+        updateLightIndicator(3, payload);
+      }
+      if (topic === topicDoor) {
+        updateDoorIndicator(payload);
+      }
+    });
+
+    function updateWantedTemp() {
+      if (currentRole !== "admin") return;
+      const slider = document.getElementById("tempSlider");
+      const wantedValue = slider.value;
+      document.getElementById("wanted-temp").innerText = wantedValue;
+      client.publish(topicWantedTemp, wantedValue);
+    }
+
+    function toggleLight(lightNumber) {
+      client.publish("esp32/light" + lightNumber, "TOGGLE");
+    }
+    function updateLightIndicator(lightNumber, state) {
+      const indicator = document.getElementById(`light${lightNumber}-indicator`);
+      if (!indicator) return;
+      if (state === "ON") {
+        indicator.classList.add("on");
+      } else {
+        indicator.classList.remove("on");
+      }
+    }
+
+    function openDoor() {
+      if (currentRole !== "admin") return;
+      client.publish(topicDoor, "OPEN");
+    }
+    function closeDoor() {
+      client.publish(topicDoor, "CLOSE");
+    }
+    function updateDoorIndicator(state) {
+      const doorIndicator = document.getElementById("door-indicator");
+      if (state === "OPEN") {
+        doorIndicator.classList.add("on");
+      } else {
+        doorIndicator.classList.remove("on");
+      }
+    }
+  </script>
 </body>
 </html>
