@@ -323,8 +323,18 @@
     }
 
     function toggleLight(lightNumber) {
-      client.publish("esp32/light" + lightNumber, "TOGGLE");
+    const indicator = document.getElementById(`light${lightNumber}-indicator`);
+
+    // Vérifie l'état actuel et bascule entre ON et OFF
+    if (indicator.classList.contains("on")) {
+        client.publish(`lentheo/light${lightNumber}`, "OFF");
+        indicator.classList.remove("on");
+    } else {
+        client.publish(`lentheo/light${lightNumber}`, "ON");
+        indicator.classList.add("on");
+        }
     }
+
     function updateLightIndicator(lightNumber, state) {
       const indicator = document.getElementById(`light${lightNumber}-indicator`);
       if (!indicator) return;
