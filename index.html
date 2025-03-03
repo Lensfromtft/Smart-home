@@ -6,6 +6,8 @@
   <title>Smart Home Dashboard - Login</title>
   <!-- Import MQTT library -->
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <!-- Import Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     /* Global styles */
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -56,25 +58,22 @@
     }
     /* Logout button */
     #logout-container {
-    text-align: center;
-    margin-top: 20px; /* Espacement avec les blocs */
+      text-align: center;
+      margin-top: 20px;
     }
-
     #logout-container button {
-        padding: 10px 20px;
-        font-size: 1rem;
-        border: none;
-        border-radius: 4px;
-        background: #333;
-        color: #fff;
-        cursor: pointer;  
-        transition: background 0.2s ease;
+      padding: 10px 20px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 4px;
+      background: #333;
+      color: #fff;
+      cursor: pointer;  
+      transition: background 0.2s ease;
     }
-
     #logout-container button:hover {
-        background: #555;
+      background: #555;
     }
-
     /* Dashboard (tabs) */
     #dashboard-container {
       width: 100%;
@@ -136,7 +135,6 @@
   
   <!-- Dashboard (hidden by default) -->
   <div id="dashboard-container" style="display: none;">
-
     <h1>Smart Home Dashboard - PFE</h1>
     <nav class="tabs">
       <button class="tab-btn active" onclick="showTab('tab-temp')">Temperature</button>
@@ -152,6 +150,10 @@
         <label for="tempSlider">Desired Temperature:</label>
         <input type="range" id="tempSlider" min="0" max="40" step="0.5" value="20" oninput="updateWantedTemp()">
         <p>Set Point: <span id="wanted-temp">20</span> °C</p>
+      </div>
+      <!-- Graphique de l'historique des températures -->
+      <div>
+        <canvas id="tempChart" width="400" height="200"></canvas>
       </div>
     </section>
     
@@ -190,7 +192,7 @@
     <div id="logout-container">
       <button onclick="logout()">Logout</button>
     </div>
-
+    
     <footer>
       &copy; 2025 - Ernouf & Guedj
     </footer>
@@ -295,10 +297,27 @@
       client.subscribe(topicDoor);
     });
 
+    var tempChart; // Global variable for the Chart.js instance
+
     client.on("message", (topic, message) => {
       const payload = message.toString();
       if (topic === topicTemperature) {
+        // Update current temperature display
         document.getElementById("current-temp").innerText = payload + " °C";
+        
+        // Update the temperature history chart
+        if (tempChart) {
+          tempChart.data.labels.push(new Date().toLocaleTimeString());
+          tempChart.data.datasets[0].data.push(parseFloat(payload));
+          
+          // Keep only the 20 most recent data points
+          if (tempChart.data.labels.length > 20) {
+            tempChart.data.labels.shift();
+            tempChart.data.datasets[0].data.shift();
+          }
+          
+          tempChart.update();
+        }
       }
       if (topic === topicLight1) {
         updateLightIndicator(1, payload);
@@ -323,16 +342,15 @@
     }
 
     function toggleLight(lightNumber) {
-    const indicator = document.getElementById(`light${lightNumber}-indicator`);
-
-    // Vérifie l'état actuel et bascule entre ON et OFF
-    if (indicator.classList.contains("on")) {
+      const indicator = document.getElementById(`light${lightNumber}-indicator`);
+      // Toggle between ON and OFF
+      if (indicator.classList.contains("on")) {
         client.publish(`lentheo/light${lightNumber}`, "OFF");
         indicator.classList.remove("on");
-    } else {
+      } else {
         client.publish(`lentheo/light${lightNumber}`, "ON");
         indicator.classList.add("on");
-        }
+      }
     }
 
     function updateLightIndicator(lightNumber, state) {
@@ -349,9 +367,11 @@
       if (currentRole !== "admin") return;
       client.publish(topicDoor, "OPEN");
     }
+
     function closeDoor() {
       client.publish(topicDoor, "CLOSE");
     }
+
     function updateDoorIndicator(state) {
       const doorIndicator = document.getElementById("door-indicator");
       if (state === "OPEN") {
@@ -360,6 +380,32 @@
         doorIndicator.classList.remove("on");
       }
     }
+
+    // Initialize the temperature history chart after the page loads
+    window.onload = function() {
+      var ctx = document.getElementById('tempChart').getContext('2d');
+      tempChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Temperature (°C)',
+            data: [],
+            borderColor: 'rgba(75, 192, 192, 1)',
+            backgroundColor: 'rgba(75, 192, 192, 0.2)',
+            borderWidth: 2,
+            fill: false
+          }]
+        },
+        options: {
+          scales: {
+            y: {
+              beginAtZero: true
+            }
+          }
+        }
+      });
+    };
   </script>
 </body>
 </html>
