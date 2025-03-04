@@ -81,7 +81,7 @@
     }
     .tabs {
       display: flex;
-      justify-content: center; /* Permet de centrer les boutons */
+      justify-content: center;
       gap: 10px;
       margin-bottom: 20px;
     }
@@ -152,6 +152,8 @@
         <input type="range" id="tempSlider" min="0" max="40" step="0.1" value="20" oninput="updateWantedTemp()">
         <p>Set Point: <span id="wanted-temp">20</span> °C</p>
       </div>
+      <!-- Bouton pour le chauffage/climatisation -->
+      <button id="heaterToggleButton" onclick="toggleHeater()">Heater OFF</button>
       <!-- Graphique de l'historique des températures -->
       <div>
         <canvas id="tempChart" width="400" height="200"></canvas>
@@ -185,7 +187,6 @@
         Door Status: 
         <span class="indicator" id="door-indicator"></span>
       </p>
-      <!-- "Open" button is restricted to admin -->
       <button id="openDoorButton" onclick="openDoor()">Open</button>
       <button onclick="closeDoor()">Close</button>
     </section>
@@ -203,13 +204,11 @@
     /************************************
      * Login and Role Management
      ************************************/
-    // Pre-registered credentials
     const validAdminUser = "admin";
     const validAdminPass = "admin";
     const validUserUser  = "user";
     const validUserPass  = "user";
     
-    // Variable to store current role ("admin" or "user")
     let currentRole = "";
 
     function validateLogin() {
@@ -226,11 +225,9 @@
         return;
       }
 
-      // Successful login: hide login page and show dashboard
       document.getElementById("login-container").style.display = "none";
       document.getElementById("dashboard-container").style.display = "block";
 
-      // Apply permissions based on role
       if (currentRole === "admin") {
         document.getElementById("tempSlider").disabled = false;
         document.getElementById("openDoorButton").disabled = false;
@@ -241,17 +238,12 @@
     }
 
     function logout() {
-      // Reset the login form and current role
       currentRole = "";
       document.getElementById("username").value = "";
       document.getElementById("password").value = "";
       document.getElementById("error-message").innerText = "";
-      
-      // Reset permissions (re-enable controls)
       document.getElementById("tempSlider").disabled = false;
       document.getElementById("openDoorButton").disabled = false;
-      
-      // Hide dashboard and show login page
       document.getElementById("dashboard-container").style.display = "none";
       document.getElementById("login-container").style.display = "block";
     }
@@ -272,7 +264,6 @@
         activeButton.classList.add('active');
       }
     }
-    // Default: show Temperature tab
     showTab('tab-temp');
 
     /************************************
@@ -288,6 +279,12 @@
     const topicLight2      = "lentheo/light2";
     const topicLight3      = "lentheo/light3";
     const topicDoor        = "lentheo/door";
+    const topicHeater      = "lentheo/heater";
+
+    // Variables pour stocker les températures et l'état du chauffage côté web
+    let currentTemperature = 0;
+    let wantedTemperatureVal = 20;
+    let heaterState = false; // false = OFF, true = ON
 
     client.on("connect", () => {
       console.log("Connected to MQTT broker:", brokerURL);
@@ -298,25 +295,21 @@
       client.subscribe(topicDoor);
     });
 
-    var tempChart; // Global variable for the Chart.js instance
+    var tempChart; // Global variable for Chart.js instance
 
     client.on("message", (topic, message) => {
       const payload = message.toString();
       if (topic === topicTemperature) {
-        // Update current temperature display
         document.getElementById("current-temp").innerText = payload + " °C";
-        
-        // Update the temperature history chart
+        currentTemperature = parseFloat(payload);
+        updateHeaterButton();
         if (tempChart) {
           tempChart.data.labels.push(new Date().toLocaleTimeString());
-          tempChart.data.datasets[0].data.push(parseFloat(payload));
-          
-          // Keep only the 20 most recent data points
+          tempChart.data.datasets[0].data.push(currentTemperature);
           if (tempChart.data.labels.length > 20) {
             tempChart.data.labels.shift();
             tempChart.data.datasets[0].data.shift();
           }
-          
           tempChart.update();
         }
       }
@@ -337,14 +330,34 @@
     function updateWantedTemp() {
       if (currentRole !== "admin") return;
       const slider = document.getElementById("tempSlider");
-      const wantedValue = slider.value;
-      document.getElementById("wanted-temp").innerText = wantedValue;
-      client.publish(topicWantedTemp, wantedValue);
+      wantedTemperatureVal = parseFloat(slider.value);
+      document.getElementById("wanted-temp").innerText = slider.value;
+      client.publish(topicWantedTemp, slider.value);
+      updateHeaterButton();
+    }
+
+    // Met à jour le texte du bouton en fonction de la comparaison des températures
+    function updateHeaterButton() {
+      let mode = "Heater";
+      if (wantedTemperatureVal < currentTemperature) {
+        mode = "Air conditioner";
+      }
+      // Si heaterState est true, on affiche "ON", sinon "OFF"
+      const stateText = heaterState ? "ON" : "OFF";
+      document.getElementById("heaterToggleButton").innerText = mode + " " + stateText;
+    }
+
+    // Fonction pour basculer l'état du chauffage et publier sur le broker MQTT
+    function toggleHeater() {
+      heaterState = !heaterState;
+      const newState = heaterState ? "ON" : "OFF";
+      client.publish(topicHeater, newState);
+      updateHeaterButton();
+      console.log("Heater state toggled:", newState);
     }
 
     function toggleLight(lightNumber) {
       const indicator = document.getElementById(`light${lightNumber}-indicator`);
-      // Toggle between ON and OFF
       if (indicator.classList.contains("on")) {
         client.publish(`lentheo/light${lightNumber}`, "OFF");
         indicator.classList.remove("on");
@@ -382,7 +395,6 @@
       }
     }
 
-    // Initialize the temperature history chart after the page loads
     window.onload = function() {
       var ctx = document.getElementById('tempChart').getContext('2d');
       tempChart = new Chart(ctx, {
