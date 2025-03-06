@@ -152,9 +152,9 @@
         <input type="range" id="tempSlider" min="0" max="40" step="0.1" value="20" oninput="updateWantedTemp()">
         <p>Set Point: <span id="wanted-temp">20</span> °C</p>
       </div>
-      <!-- Bouton pour le chauffage/climatisation -->
+      <!-- Button to toggle heater/climatisation -->
       <button id="heaterToggleButton" onclick="toggleHeater()">Heater OFF</button>
-      <!-- Graphique de l'historique des températures -->
+      <!-- Temperature history chart -->
       <div>
         <canvas id="tempChart" width="400" height="200"></canvas>
       </div>
@@ -183,10 +183,8 @@
     <!-- Door Tab -->
     <section id="tab-door" class="tab-content">
       <h2>Door Control</h2>
-      <p>
-        Door Status: 
-        <span class="indicator" id="door-indicator"></span>
-      </p>
+      <p>Door Status: <span class="indicator" id="door-indicator"></span></p>
+      <p>Presence Detection: <strong id="presence-status">Loading...</strong></p>
       <button id="openDoorButton" onclick="openDoor()">Open</button>
       <button onclick="closeDoor()">Close</button>
     </section>
@@ -210,12 +208,12 @@
     const validUserPass  = "user";
     
     let currentRole = "";
-
+    
     function validateLogin() {
       const username = document.getElementById("username").value;
       const password = document.getElementById("password").value;
       const errorMessage = document.getElementById("error-message");
-
+    
       if (username === validAdminUser && password === validAdminPass) {
         currentRole = "admin";
       } else if (username === validUserUser && password === validUserPass) {
@@ -224,10 +222,10 @@
         errorMessage.innerText = "Incorrect username or password";
         return;
       }
-
+    
       document.getElementById("login-container").style.display = "none";
       document.getElementById("dashboard-container").style.display = "block";
-
+    
       if (currentRole === "admin") {
         document.getElementById("tempSlider").disabled = false;
         document.getElementById("openDoorButton").disabled = false;
@@ -236,7 +234,7 @@
         document.getElementById("openDoorButton").disabled = true;
       }
     }
-
+    
     function logout() {
       currentRole = "";
       document.getElementById("username").value = "";
@@ -247,7 +245,7 @@
       document.getElementById("dashboard-container").style.display = "none";
       document.getElementById("login-container").style.display = "block";
     }
-
+    
     /************************************
      * Dashboard Tab Management
      ************************************/
@@ -265,13 +263,13 @@
       }
     }
     showTab('tab-temp');
-
+    
     /************************************
      * MQTT Configuration and Dashboard Logic
      ************************************/
     const brokerURL = "wss://public.mqttserver.eu:8081";
     const client = mqtt.connect(brokerURL);
-
+    
     // MQTT Topics
     const topicTemperature = "lentheo/temperature";
     const topicWantedTemp  = "lentheo/wanted";
@@ -280,12 +278,13 @@
     const topicLight3      = "lentheo/light3";
     const topicDoor        = "lentheo/door";
     const topicHeater      = "lentheo/heater";
-
-    // Variables pour stocker les températures et l'état du chauffage côté web
+    const topicSomeone     = "lentheo/someone";
+    
     let currentTemperature = 0;
     let wantedTemperatureVal = 20;
     let heaterState = false; // false = OFF, true = ON
-
+    let lastSomeoneState = "";  // Stocke le dernier état reçu de lentheo/someone
+    
     client.on("connect", () => {
       console.log("Connected to MQTT broker:", brokerURL);
       client.subscribe(topicTemperature);
@@ -293,12 +292,13 @@
       client.subscribe(topicLight2);
       client.subscribe(topicLight3);
       client.subscribe(topicDoor);
+      client.subscribe(topicSomeone);
     });
-
-    var tempChart; // Global variable for Chart.js instance
-
+    
+    // Gestionnaire unique pour tous les messages
     client.on("message", (topic, message) => {
       const payload = message.toString();
+      
       if (topic === topicTemperature) {
         document.getElementById("current-temp").innerText = payload + " °C";
         currentTemperature = parseFloat(payload);
@@ -325,8 +325,11 @@
       if (topic === topicDoor) {
         updateDoorIndicator(payload);
       }
+      if (topic === topicSomeone) {
+        handlePresenceChange(payload);
+      }
     });
-
+    
     function updateWantedTemp() {
       if (currentRole !== "admin") return;
       const slider = document.getElementById("tempSlider");
@@ -335,19 +338,16 @@
       client.publish(topicWantedTemp, slider.value);
       updateHeaterButton();
     }
-
-    // Met à jour le texte du bouton en fonction de la comparaison des températures
+    
     function updateHeaterButton() {
       let mode = "Heater";
       if (wantedTemperatureVal < currentTemperature) {
         mode = "Air conditioner";
       }
-      // Si heaterState est true, on affiche "ON", sinon "OFF"
       const stateText = heaterState ? "ON" : "OFF";
       document.getElementById("heaterToggleButton").innerText = mode + " " + stateText;
     }
-
-    // Fonction pour basculer l'état du chauffage et publier sur le broker MQTT
+    
     function toggleHeater() {
       heaterState = !heaterState;
       const newState = heaterState ? "ON" : "OFF";
@@ -355,7 +355,7 @@
       updateHeaterButton();
       console.log("Heater state toggled:", newState);
     }
-
+    
     function toggleLight(lightNumber) {
       const indicator = document.getElementById(`light${lightNumber}-indicator`);
       if (indicator.classList.contains("on")) {
@@ -366,7 +366,12 @@
         indicator.classList.add("on");
       }
     }
-
+    
+    function controlLight3(state) {
+      client.publish(topicLight3, state);
+      updateLightIndicator(3, state);
+    }
+    
     function updateLightIndicator(lightNumber, state) {
       const indicator = document.getElementById(`light${lightNumber}-indicator`);
       if (!indicator) return;
@@ -376,16 +381,16 @@
         indicator.classList.remove("on");
       }
     }
-
+    
     function openDoor() {
       if (currentRole !== "admin") return;
       client.publish(topicDoor, "OPEN");
     }
-
+    
     function closeDoor() {
       client.publish(topicDoor, "CLOSE");
     }
-
+    
     function updateDoorIndicator(state) {
       const doorIndicator = document.getElementById("door-indicator");
       if (state === "OPEN") {
@@ -394,7 +399,24 @@
         doorIndicator.classList.remove("on");
       }
     }
-
+    
+    function handlePresenceChange(newState) {
+      const presenceText = document.getElementById("presence-status");
+      if (newState !== lastSomeoneState) {
+        lastSomeoneState = newState;
+        if (newState === "YES") {
+          presenceText.innerText = "Someone is in front of the door";
+          presenceText.style.color = "red";
+          controlLight3("ON");
+        } else {
+          presenceText.innerText = "No one detected";
+          presenceText.style.color = "green";
+          controlLight3("OFF");
+        }
+      }
+    }
+    
+    var tempChart;
     window.onload = function() {
       var ctx = document.getElementById('tempChart').getContext('2d');
       tempChart = new Chart(ctx, {
